@@ -530,6 +530,7 @@
         </div>
         <div class="button-row">
           <button id="createTeams">Crear equipos</button>
+          <button id="shuffleTeams" class="secondary">Regenerar equipos</button>
           <button id="copyTeams" class="secondary">Copiar</button>
         </div>
         <div class="warn" id="teamsWarn"></div>
@@ -584,6 +585,7 @@
     const playerWarn = document.getElementById('playerWarn');
 
     const createTeamsBtn = document.getElementById('createTeams');
+    const shuffleTeamsBtn = document.getElementById('shuffleTeams');
     const copyTeamsBtn = document.getElementById('copyTeams');
     const teamsOutput = document.getElementById('teamsOutput');
     const teamsWarn = document.getElementById('teamsWarn');
@@ -923,7 +925,16 @@
       }
     }
 
-    function createTeams() {
+    function shuffleArray(list) {
+      const arr = [...list];
+      for (let i = arr.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [arr[i], arr[j]] = [arr[j], arr[i]];
+      }
+      return arr;
+    }
+
+    function createTeams(options = {}) {
       resetWarnings();
       const perTeam = Number(tipo.value);
       if (selectedPlayers.length < 2) {
@@ -943,8 +954,9 @@
         positionCounts: { Defensa: 0, Mediocampo: 0, Ataque: 0 },
       }));
 
-      const keepers = selectedPlayers.filter((p) => p.isGoalkeeper);
-      const fieldPlayers = selectedPlayers.filter((p) => !p.isGoalkeeper);
+      const sourcePlayers = options.shuffle ? shuffleArray(selectedPlayers) : selectedPlayers;
+      const keepers = sourcePlayers.filter((p) => p.isGoalkeeper);
+      const fieldPlayers = sourcePlayers.filter((p) => !p.isGoalkeeper);
 
       if (keepers.length) {
         const keeperOrder = [...keepers];
@@ -1055,6 +1067,7 @@
     cancelEditBtn.addEventListener('click', cancelEdit);
     clearPlayersBtn.addEventListener('click', clearPlayers);
     createTeamsBtn.addEventListener('click', createTeams);
+    shuffleTeamsBtn.addEventListener('click', () => createTeams({ shuffle: true }));
     copyTeamsBtn.addEventListener('click', copyTeams);
     resetSelectionBtn.addEventListener('click', resetSelection);
     switchSaved.addEventListener('click', () => setMobileView('saved'));
