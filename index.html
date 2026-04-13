@@ -158,6 +158,20 @@
       .row.cols-2 { grid-template-columns: 1fr; }
     }
 
+    @media (max-width: 720px) {
+      .mobile-switch {
+        display: flex;
+      }
+
+      .step[data-mobile="toggle"] .list {
+        display: none;
+      }
+
+      .step[data-mobile="toggle"].show .list {
+        display: grid;
+      }
+    }
+
     label {
       font-size: 12px;
       color: var(--muted);
@@ -268,6 +282,29 @@
       max-height: 280px;
       overflow: auto;
       padding-right: 4px;
+    }
+
+    .list.compact {
+      max-height: 220px;
+      height: 220px;
+    }
+
+    .mobile-switch {
+      display: none;
+      gap: 8px;
+    }
+
+    .mobile-switch button {
+      flex: 1;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+    }
+
+    .mobile-switch button.active {
+      background: var(--accent);
+      color: var(--bg);
+      border: 1px solid rgba(56,224,122,0.4);
     }
 
     .player {
@@ -450,19 +487,39 @@
 
         <div class="button-row">
           <button id="addPlayer">Agregar jugador</button>
+          <button id="cancelEdit" class="secondary" style="display:none;">Cancelar edicion</button>
           <button id="clearPlayers" class="secondary">Limpiar jugadores</button>
         </div>
         <div class="warn" id="playerWarn"></div>
       </div>
 
-      <div class="step">
+      <div class="mobile-switch" id="mobileSwitch">
+        <button id="switchSaved" class="secondary active" type="button">Guardados</button>
+        <button id="switchSelected" class="secondary" type="button">Seleccionados</button>
+      </div>
+
+      <div class="step show" id="stepSaved" data-mobile="toggle">
+        <div class="step-head">
+          <strong>Jugadores guardados</strong>
+          <span class="step-tag">Local</span>
+        </div>
+        <div class="row">
+          <div>
+            <label for="searchSaved">Buscar jugador</label>
+            <input id="searchSaved" type="text" placeholder="Escribi un nombre..." />
+          </div>
+        </div>
+        <div class="list compact" id="playerList"></div>
+      </div>
+
+      <div class="step" id="stepSelected" data-mobile="toggle">
         <div class="step-head">
           <strong>Jugadores seleccionados</strong>
           <span class="step-tag">Partido</span>
         </div>
-        <div class="list" id="selectedList"></div>
+        <div class="list compact" id="selectedList"></div>
         <div class="button-row">
-          <button id="resetSelection" class="secondary">Crear nuevos equipos</button>
+          <button id="resetSelection" class="secondary">Limpiar seleccion</button>
         </div>
       </div>
 
@@ -478,13 +535,6 @@
         <div class="warn" id="teamsWarn"></div>
       </div>
 
-      <div class="step">
-        <div class="step-head">
-          <strong>Jugadores guardados</strong>
-          <span class="step-tag">Local</span>
-        </div>
-        <div class="list" id="playerList"></div>
-      </div>
     </section>
 
     <section class="panel">
@@ -521,10 +571,16 @@
     const ataqueVal = document.getElementById('ataqueVal');
 
     const addPlayerBtn = document.getElementById('addPlayer');
+    const cancelEditBtn = document.getElementById('cancelEdit');
     const clearPlayersBtn = document.getElementById('clearPlayers');
     const playerList = document.getElementById('playerList');
     const selectedList = document.getElementById('selectedList');
     const resetSelectionBtn = document.getElementById('resetSelection');
+    const stepSaved = document.getElementById('stepSaved');
+    const stepSelected = document.getElementById('stepSelected');
+    const switchSaved = document.getElementById('switchSaved');
+    const switchSelected = document.getElementById('switchSelected');
+    const searchSaved = document.getElementById('searchSaved');
     const playerWarn = document.getElementById('playerWarn');
 
     const createTeamsBtn = document.getElementById('createTeams');
@@ -535,6 +591,7 @@
     let players = [];
     let selectedPlayers = [];
     let lastTeams = [];
+    let editPlayerId = null;
 
     function loadPlayers() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -571,12 +628,17 @@
 
     function renderPlayers() {
       playerList.innerHTML = '';
-      if (!players.length) {
+      const query = (searchSaved?.value || '').trim().toLowerCase();
+      const filtered = query
+        ? players.filter((p) => p.nombre.toLowerCase().includes(query))
+        : players;
+
+      if (!filtered.length) {
         playerList.innerHTML = '<div class="footer-note">No hay jugadores guardados.</div>';
         return;
       }
 
-      players.forEach((p) => {
+      filtered.forEach((p) => {
         const item = document.createElement('div');
         item.className = 'player';
         const left = document.createElement('div');
@@ -604,6 +666,12 @@
           updateTeamsCount();
         };
 
+        const editBtn = document.createElement('button');
+        editBtn.className = 'secondary';
+        editBtn.style.marginLeft = '8px';
+        editBtn.textContent = 'Editar';
+        editBtn.onclick = () => startEditPlayer(p);
+
         const removeBtn = document.createElement('button');
         removeBtn.className = 'secondary';
         removeBtn.style.marginLeft = '8px';
@@ -623,6 +691,7 @@
         rightWrap.style.alignItems = 'center';
         rightWrap.appendChild(right.firstChild);
         rightWrap.appendChild(addBtn);
+        rightWrap.appendChild(editBtn);
         rightWrap.appendChild(removeBtn);
 
         item.appendChild(left);
@@ -680,6 +749,20 @@
       teamsWarn.textContent = '';
     }
 
+    function setMobileView(view) {
+      if (view === 'saved') {
+        stepSaved.classList.add('show');
+        stepSelected.classList.remove('show');
+        switchSaved.classList.add('active');
+        switchSelected.classList.remove('active');
+      } else {
+        stepSelected.classList.add('show');
+        stepSaved.classList.remove('show');
+        switchSelected.classList.add('active');
+        switchSaved.classList.remove('active');
+      }
+    }
+
     function handleModeToggle() {
       const isAdvanced = modoAvanzado.checked;
       avanzadoFields.style.display = isAdvanced ? 'grid' : 'none';
@@ -723,8 +806,7 @@
         rating = computeRating(mode, attrs);
       }
 
-      const player = {
-        id: crypto.randomUUID(),
+      const nextData = {
         nombre: name,
         isGoalkeeper: isGK,
         mode: isGK ? 'arquero' : (modoBasico.checked ? 'basico' : 'avanzado'),
@@ -733,7 +815,18 @@
         posicion: isGK ? 'Arquero' : posicion.value,
       };
 
-      players.push(player);
+      if (editPlayerId) {
+        const existing = players.find((pl) => pl.id === editPlayerId);
+        if (existing) {
+          Object.assign(existing, nextData);
+        }
+        editPlayerId = null;
+        addPlayerBtn.textContent = 'Agregar jugador';
+        cancelEditBtn.style.display = 'none';
+      } else {
+        const player = { id: crypto.randomUUID(), ...nextData };
+        players.push(player);
+      }
       savePlayers();
       renderPlayers();
       renderSelected();
@@ -745,6 +838,51 @@
       posicion.disabled = false;
       posicion.value = '';
       handleGoalkeeperToggle();
+    }
+
+    function startEditPlayer(player) {
+      editPlayerId = player.id;
+      nombre.value = player.nombre;
+      arquero.checked = !!player.isGoalkeeper;
+      if (player.isGoalkeeper) {
+        modoBasico.checked = true;
+      } else if (player.mode === 'avanzado') {
+        modoAvanzado.checked = true;
+      } else {
+        modoBasico.checked = true;
+      }
+
+      handleModeToggle();
+      handleGoalkeeperToggle();
+
+      if (!player.isGoalkeeper) {
+        if (player.mode === 'avanzado') {
+          defensa.value = player.attrs.defensa ?? 7;
+          pase.value = player.attrs.pase ?? 7;
+          ataque.value = player.attrs.ataque ?? 7;
+        } else {
+          calidad.value = player.attrs.calidad ?? 7;
+        }
+      }
+
+      posicion.value = player.isGoalkeeper ? '' : (player.posicion || '');
+      updateRangeDisplays();
+
+      addPlayerBtn.textContent = 'Guardar cambios';
+      cancelEditBtn.style.display = 'inline-flex';
+    }
+
+    function cancelEdit() {
+      editPlayerId = null;
+      addPlayerBtn.textContent = 'Agregar jugador';
+      cancelEditBtn.style.display = 'none';
+      nombre.value = '';
+      arquero.checked = false;
+      posicion.disabled = false;
+      posicion.value = '';
+      handleGoalkeeperToggle();
+      handleModeToggle();
+      updateRangeDisplays();
     }
 
     function buildTeamCapacities(total, teamsCount) {
@@ -914,14 +1052,19 @@
     ataque.addEventListener('input', updateRangeDisplays);
 
     addPlayerBtn.addEventListener('click', addPlayer);
+    cancelEditBtn.addEventListener('click', cancelEdit);
     clearPlayersBtn.addEventListener('click', clearPlayers);
     createTeamsBtn.addEventListener('click', createTeams);
     copyTeamsBtn.addEventListener('click', copyTeams);
     resetSelectionBtn.addEventListener('click', resetSelection);
+    switchSaved.addEventListener('click', () => setMobileView('saved'));
+    switchSelected.addEventListener('click', () => setMobileView('selected'));
+    searchSaved.addEventListener('input', renderPlayers);
 
     updateRangeDisplays();
     handleModeToggle();
     loadPlayers();
+    setMobileView('saved');
   </script>
 </body>
 </html>
