@@ -457,6 +457,17 @@
 
       <div class="step">
         <div class="step-head">
+          <strong>Jugadores seleccionados</strong>
+          <span class="step-tag">Partido</span>
+        </div>
+        <div class="list" id="selectedList"></div>
+        <div class="button-row">
+          <button id="resetSelection" class="secondary">Crear nuevos equipos</button>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="step-head">
           <strong>Paso 3 · Crear equipos</strong>
           <span class="step-tag">Balance</span>
         </div>
@@ -512,6 +523,8 @@
     const addPlayerBtn = document.getElementById('addPlayer');
     const clearPlayersBtn = document.getElementById('clearPlayers');
     const playerList = document.getElementById('playerList');
+    const selectedList = document.getElementById('selectedList');
+    const resetSelectionBtn = document.getElementById('resetSelection');
     const playerWarn = document.getElementById('playerWarn');
 
     const createTeamsBtn = document.getElementById('createTeams');
@@ -520,12 +533,14 @@
     const teamsWarn = document.getElementById('teamsWarn');
 
     let players = [];
+    let selectedPlayers = [];
     let lastTeams = [];
 
     function loadPlayers() {
       const raw = localStorage.getItem(STORAGE_KEY);
       players = raw ? JSON.parse(raw) : [];
       renderPlayers();
+      renderSelected();
       updateStatus();
       updateTeamsCount();
     }
@@ -535,12 +550,12 @@
     }
 
     function updateStatus() {
-      statusEl.textContent = `${players.length} jugadores cargados`;
+      statusEl.textContent = `${players.length} guardados · ${selectedPlayers.length} seleccionados`;
     }
 
     function updateTeamsCount() {
       const perTeam = Number(tipo.value);
-      const total = players.length;
+      const total = selectedPlayers.length;
       const teams = total > 0 ? Math.ceil(total / perTeam) : 0;
       teamsCountEl.textContent = teams ? `${teams} equipos` : '—';
       teamsHint.textContent = total
@@ -574,13 +589,75 @@
           right.innerHTML = `<span class="chip">${p.rating}</span>`;
         }
 
+        const addBtn = document.createElement('button');
+        addBtn.className = 'secondary';
+        addBtn.style.marginLeft = '8px';
+        const already = selectedPlayers.some((sp) => sp.id === p.id);
+        addBtn.textContent = already ? 'Agregado' : 'Agregar';
+        addBtn.disabled = already;
+        addBtn.onclick = () => {
+          if (selectedPlayers.some((sp) => sp.id === p.id)) return;
+          selectedPlayers.push(p);
+          renderSelected();
+          renderPlayers();
+          updateStatus();
+          updateTeamsCount();
+        };
+
         const removeBtn = document.createElement('button');
         removeBtn.className = 'secondary';
         removeBtn.style.marginLeft = '8px';
         removeBtn.textContent = 'Quitar';
         removeBtn.onclick = () => {
           players = players.filter((pl) => pl.id !== p.id);
+          selectedPlayers = selectedPlayers.filter((pl) => pl.id !== p.id);
           savePlayers();
+          renderPlayers();
+          renderSelected();
+          updateStatus();
+          updateTeamsCount();
+        };
+
+        const rightWrap = document.createElement('div');
+        rightWrap.style.display = 'flex';
+        rightWrap.style.alignItems = 'center';
+        rightWrap.appendChild(right.firstChild);
+        rightWrap.appendChild(addBtn);
+        rightWrap.appendChild(removeBtn);
+
+        item.appendChild(left);
+        item.appendChild(rightWrap);
+        playerList.appendChild(item);
+      });
+    }
+
+    function renderSelected() {
+      selectedList.innerHTML = '';
+      if (!selectedPlayers.length) {
+        selectedList.innerHTML = '<div class="footer-note">No hay jugadores seleccionados.</div>';
+        return;
+      }
+
+      selectedPlayers.forEach((p) => {
+        const item = document.createElement('div');
+        item.className = 'player';
+        const left = document.createElement('div');
+        left.innerHTML = `<strong>${p.nombre}</strong><br><small>${p.isGoalkeeper ? 'Arquero' : (p.posicion || 'Sin preferencia')}</small>`;
+
+        const right = document.createElement('div');
+        if (p.isGoalkeeper) {
+          right.innerHTML = '<span class="chip">ARQ</span>';
+        } else {
+          right.innerHTML = `<span class="chip">${p.rating}</span>`;
+        }
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'secondary';
+        removeBtn.style.marginLeft = '8px';
+        removeBtn.textContent = 'Quitar';
+        removeBtn.onclick = () => {
+          selectedPlayers = selectedPlayers.filter((pl) => pl.id !== p.id);
+          renderSelected();
           renderPlayers();
           updateStatus();
           updateTeamsCount();
@@ -594,7 +671,7 @@
 
         item.appendChild(left);
         item.appendChild(rightWrap);
-        playerList.appendChild(item);
+        selectedList.appendChild(item);
       });
     }
 
@@ -659,6 +736,7 @@
       players.push(player);
       savePlayers();
       renderPlayers();
+      renderSelected();
       updateStatus();
       updateTeamsCount();
 
@@ -710,13 +788,13 @@
     function createTeams() {
       resetWarnings();
       const perTeam = Number(tipo.value);
-      if (players.length < 2) {
+      if (selectedPlayers.length < 2) {
         teamsWarn.textContent = 'Cargá al menos 2 jugadores para armar equipos.';
         return;
       }
 
-      const teamsCount = Math.ceil(players.length / perTeam);
-      const capacities = buildTeamCapacities(players.length, teamsCount);
+      const teamsCount = Math.ceil(selectedPlayers.length / perTeam);
+      const capacities = buildTeamCapacities(selectedPlayers.length, teamsCount);
       const teams = Array.from({ length: teamsCount }, (_, i) => ({
         name: `Equipo ${i + 1}`,
         players: [],
@@ -727,8 +805,8 @@
         positionCounts: { Defensa: 0, Mediocampo: 0, Ataque: 0 },
       }));
 
-      const keepers = players.filter((p) => p.isGoalkeeper);
-      const fieldPlayers = players.filter((p) => !p.isGoalkeeper);
+      const keepers = selectedPlayers.filter((p) => p.isGoalkeeper);
+      const fieldPlayers = selectedPlayers.filter((p) => !p.isGoalkeeper);
 
       if (keepers.length) {
         const keeperOrder = [...keepers];
@@ -805,12 +883,25 @@
 
     function clearPlayers() {
       players = [];
+      selectedPlayers = [];
       savePlayers();
+      renderPlayers();
+      renderSelected();
+      updateStatus();
+      updateTeamsCount();
+      teamsOutput.innerHTML = '<div class="footer-note">Todavía no hay equipos. Completá los pasos y presioná “Crear equipos”.</div>';
+      lastTeams = [];
+    }
+
+    function resetSelection() {
+      selectedPlayers = [];
+      renderSelected();
       renderPlayers();
       updateStatus();
       updateTeamsCount();
       teamsOutput.innerHTML = '<div class="footer-note">Todavía no hay equipos. Completá los pasos y presioná “Crear equipos”.</div>';
       lastTeams = [];
+      teamsWarn.textContent = '';
     }
 
     tipo.addEventListener('change', updateTeamsCount);
@@ -826,6 +917,7 @@
     clearPlayersBtn.addEventListener('click', clearPlayers);
     createTeamsBtn.addEventListener('click', createTeams);
     copyTeamsBtn.addEventListener('click', copyTeams);
+    resetSelectionBtn.addEventListener('click', resetSelection);
 
     updateRangeDisplays();
     handleModeToggle();
